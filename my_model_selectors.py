@@ -74,11 +74,32 @@ class SelectorBIC(ModelSelector):
 
         :return: GaussianHMM object
         """
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+        best_model = self.base_model(self.n_constant)
+        best_score = float('inf')
+        n_features = len(self.X[0])
+
+        for n_components in range(self.min_n_components, self.max_n_components+1):
+            try:
+                # We train the model using GaussianHMM if the logL is maximized then we set this as the best_score
+                current_model = GaussianHMM(n_components=n_components, random_state=self.random_state, n_iter=1000).fit(self.X, self.lengths)
+                logL = current_model.score(self.X, self.lengths)
+                p = n_components * n_components + 2 * n_features*n_components - 1
+                N = len(self.X)
+                #We aplay beysian BIC = -2 * logL + p * logN
+                current_score = (-2)*logL+p*np.log(N)
+                # We test if the score maximized
+                if current_score < best_score:
+                    best_score = current_score
+                    best_model = current_model
+            except:
+                pass
+
+        return best_model
 
 class SelectorDIC(ModelSelector):
     ''' select best model based on Discriminative Information Criterion
@@ -93,8 +114,33 @@ class SelectorDIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        best_model = self.base_model(self.n_constant)
+        best_score = float('-inf')
 
+        for n_components in range(self.min_n_components, self.max_n_components+1):
+            try:
+                # We train the model using GaussianHMM if the logL is maximized then we set this as the best_score
+                current_model = GaussianHMM(n_components=n_components, random_state=self.random_state, n_iter=1000).fit(self.X, self.lengths)
+                logL = current_model.score(self.X, self.lengths)
+
+                sum_logL = []
+                for word in self.words:
+                    if word == self.this_word:
+                        # we skeep curent word
+                        continue
+                    word_n, word_len = self.hwords[word]
+
+                    sum_logL.append(current_model.score(word_n, word_len))
+
+                current_score = logL - np.average(sum_logL)
+                # We test if the score maximized
+                if current_score > best_score:
+                    best_score = current_score
+                    best_model = current_model
+            except:
+                pass
+
+        return best_model
 
 class SelectorCV(ModelSelector):
     ''' select best model based on average log Likelihood of cross-validation folds
@@ -102,7 +148,30 @@ class SelectorCV(ModelSelector):
     '''
 
     def select(self):
+        # TODO implement model selection using CV
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+        best_model = self.base_model(self.n_constant)
+        best_score = float('-inf')
+
+        for n_components in range(self.min_n_components, self.max_n_components+1):
+            try:
+                # Split dataset into k consecutive folds
+                split_method = KFold(n_splits=min(3,len(self.lengths)))
+                logL = []
+                for train_id, test_id in split_method.split(self.sequences):
+                    train_n,train_len = combine_sequences(train_id, self.sequences)
+                    test_n,test_len = combine_sequences(test_id, self.sequences)
+                    # We train the model using GaussianHMM if the logL is maximized then we set this as the best_score
+                    current_model = GaussianHMM(n_components=n_components, random_state=self.random_state, n_iter=1000).fit(train_n, train_len)
+                    logL.append(current_model.score(test_n, test_len))
+                current_score = np.average(logL)
+                #print("Word: {} Num States: {} LogL: {}".format(self.this_word,n_components,current_score))
+                # We test if the score maximized
+                if current_score > best_score:
+                    best_score = current_score
+                    best_model = current_model
+            except:
+                pass
+
+        return best_model
